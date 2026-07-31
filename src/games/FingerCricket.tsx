@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { DataConnection } from 'peerjs';
 import { PeerMessage } from '@/types';
 
@@ -22,6 +22,12 @@ export default function FingerCricket({ connection, isHost }: Props) {
   const [target, setTarget] = useState<number | null>(null);
   const [lastResult, setLastResult] = useState<string>('');
   const [gameStarted, setGameStarted] = useState(false);
+  const processingRef = useRef(false);
+  const inningsRef = useRef(1);
+  const isBattingRef = useRef(isHost);
+  const myScoreRef = useRef(0);
+  const opponentScoreRef = useRef(0);
+  const targetRef = useRef<number | null>(null);
 
   const send = useCallback(
     (type: string, payload: unknown = {}) => {
@@ -40,42 +46,56 @@ export default function FingerCricket({ connection, isHost }: Props) {
   // Evaluate picks when both have chosen
   useEffect(() => {
     if (myPick === null || opponentPick === null) return;
+    if (processingRef.current) return;
+    processingRef.current = true;
 
+    const currentInnings = inningsRef.current;
+    const currentIsBatting = isBattingRef.current;
+    const currentTarget = targetRef.current;
     const isOut = myPick === opponentPick;
 
     if (isOut) {
       setLastResult('OUT! 🎉');
-      if (innings === 1) {
-        // First innings over
-        const scoredBy = isBatting ? myScore : opponentScore;
+      if (currentInnings === 1) {
+        const scoredBy = currentIsBatting ? myScoreRef.current : opponentScoreRef.current;
+        targetRef.current = scoredBy;
         setTarget(scoredBy);
         setTimeout(() => {
+          inningsRef.current = 2;
+          isBattingRef.current = !currentIsBatting;
           setInnings(2);
-          setIsBatting(!isBatting);
+          setIsBatting(!currentIsBatting);
           setMyPick(null);
           setOpponentPick(null);
           setPhase('innings-break');
+          processingRef.current = false;
         }, 1500);
       } else {
-        // Second innings over - game done
-        setTimeout(() => setPhase('gameover'), 1500);
+        setTimeout(() => {
+          setPhase('gameover');
+          processingRef.current = false;
+        }, 1500);
       }
     } else {
-      // Batter scores
-      const runs = isBatting ? myPick : opponentPick;
-      if (isBatting) {
-        setMyScore((prev) => prev + runs);
+      const runs = currentIsBatting ? myPick : opponentPick;
+      if (currentIsBatting) {
+        myScoreRef.current += runs;
+        setMyScore(myScoreRef.current);
         setLastResult(`+${runs} runs!`);
       } else {
-        setOpponentScore((prev) => prev + runs);
+        opponentScoreRef.current += runs;
+        setOpponentScore(opponentScoreRef.current);
         setLastResult(`Opponent scores +${runs}`);
       }
 
       // Check if target chased in innings 2
-      if (innings === 2 && target !== null) {
-        const newScore = isBatting ? myScore + runs : opponentScore + runs;
-        if (newScore > target) {
-          setTimeout(() => setPhase('gameover'), 1500);
+      if (currentInnings === 2 && currentTarget !== null) {
+        const newScore = currentIsBatting ? myScoreRef.current : opponentScoreRef.current;
+        if (newScore > currentTarget) {
+          setTimeout(() => {
+            setPhase('gameover');
+            processingRef.current = false;
+          }, 1500);
           setMyPick(null);
           setOpponentPick(null);
           return;
@@ -86,9 +106,10 @@ export default function FingerCricket({ connection, isHost }: Props) {
         setMyPick(null);
         setOpponentPick(null);
         setLastResult('');
+        processingRef.current = false;
       }, 1200);
     }
-  }, [myPick, opponentPick, isBatting, innings, myScore, opponentScore, target]);
+  }, [myPick, opponentPick]);
 
   useEffect(() => {
     const handler = (data: unknown) => {
@@ -125,6 +146,12 @@ export default function FingerCricket({ connection, isHost }: Props) {
     setTarget(null);
     setLastResult('');
     setGameStarted(true);
+    processingRef.current = false;
+    inningsRef.current = 1;
+    isBattingRef.current = isHost;
+    myScoreRef.current = 0;
+    opponentScoreRef.current = 0;
+    targetRef.current = null;
   };
 
   const handleStart = () => {

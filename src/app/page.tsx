@@ -1,6 +1,7 @@
 import GameCard from '@/components/GameCard';
 import { games } from '@/lib/gameRegistry';
 import Link from 'next/link';
+import LobbyStatus from '@/components/LobbyStatus';
 
 export default function Home() {
   const categories = [...new Set(games.map((g) => g.category))];
@@ -19,6 +20,7 @@ export default function Home() {
           <p className="text-sm text-gray-500 hidden sm:block">
             No login &bull; No ads &bull; Just fun
           </p>
+          <LobbyStatus />
         </div>
       </header>
 
